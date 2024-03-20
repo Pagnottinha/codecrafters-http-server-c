@@ -7,6 +7,10 @@
 #include <errno.h>
 #include <unistd.h>
 
+#define BUFFER_SIZE 4096
+#define RESPONSE_OK "HTTP/1.1 200 OK\r\n\r\n"
+#define RESPONSE_NOTFOUND "HTTP/1.1 404 Not Found\r\n\r\n"
+
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -54,11 +58,36 @@ int main() {
 		return 1;
 	}
 	
-	char* response = "HTTP/1.1 200 OK\r\n\r\n";
-	ssize_t bytes = send(client_fd, response, strlen(response), 0);
+	char buffer[BUFFER_SIZE];
+
+	ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer));
+
+	if (bytes_read < 0) {
+		printf("Client Failed to read.\n");
+		return 1;
+	}
+
+	printf("%s \n", buffer);
+
+	char* request_line = strtok(buffer, "\r\n\r\n");
+
+	char* http_method = strtok(request_line, " ");
+	char* path = strtok(NULL, " ");
+	char* http_version = strtok(NULL, " ");
+
+	char* response = NULL;
+
+	if (strcmp(http_method, "GET") == 0 && strcmp(path, "/") == 0) {
+		response = RESPONSE_OK;
+	}
+	else {
+		response = RESPONSE_NOTFOUND;
+	}
+
+	ssize_t bytes_send = send(client_fd, response, strlen(response), 0);
 	close(client_fd);
 
-	if (bytes == -1) {
+	if (bytes_send == -1) {
 		printf("Send response failed: %s \n", strerror(errno));
 		return 1;
 	}
