@@ -8,8 +8,9 @@
 #include <unistd.h>
 
 #define BUFFER_SIZE 4096
-#define RESPONSE_OK "HTTP/1.1 200 OK\r\n\r\n"
-#define RESPONSE_NOTFOUND "HTTP/1.1 404 Not Found\r\n\r\n"
+#define RESPONSE_OK "HTTP/1.1 200 OK\r\n"
+#define RESPONSE_NOTFOUND "HTTP/1.1 404 Not Found\r\n"
+#define RESPONSE_NOTALLOWED "HTTP/1.1 405 Method Not Allowed\r\n"
 
 int main() {
 	// Disable output buffering
@@ -67,21 +68,32 @@ int main() {
 		return 1;
 	}
 
-	printf("%s \n", buffer);
-
-	char* request_line = strtok(buffer, "\r\n\r\n");
+	char* request_line = strtok(buffer, "\r\n");
 
 	char* http_method = strtok(request_line, " ");
 	char* path = strtok(NULL, " ");
 	char* http_version = strtok(NULL, " ");
 
-	char* response = NULL;
+	printf("HTTP Method: %s \n", http_method);
+	printf("Path: %s \n", path);
+
+	char response[BUFFER_SIZE];
 
 	if (strcmp(http_method, "GET") == 0 && strcmp(path, "/") == 0) {
-		response = RESPONSE_OK;
+		snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_OK);
+	}
+	else if (strncmp(path, "/echo/", 6) == 0) {
+		if (strcmp(http_method, "GET") == 0) {
+			// + 1 to skip '/'
+			char* msg = strchr(path + 1, '/') + 1;
+			snprintf(response, BUFFER_SIZE, "%sContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", RESPONSE_OK, strlen(msg), msg);
+		}
+		else {
+			snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTALLOWED);
+		}
 	}
 	else {
-		response = RESPONSE_NOTFOUND;
+		snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTFOUND);
 	}
 
 	ssize_t bytes_send = send(client_fd, response, strlen(response), 0);
