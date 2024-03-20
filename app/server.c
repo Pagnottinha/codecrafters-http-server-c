@@ -11,6 +11,34 @@
 #define RESPONSE_OK "HTTP/1.1 200 OK\r\n"
 #define RESPONSE_NOTFOUND "HTTP/1.1 404 Not Found\r\n"
 #define RESPONSE_NOTALLOWED "HTTP/1.1 405 Method Not Allowed\r\n"
+#define RESPONSE_SERVERERROR "HTTP/1.1 500 Internal Server Error\r\n"
+
+// remember to free!!!
+char* get_header_attribute(char* header, char* attribute) {
+	char new_attribute[strlen(attribute) + 3];
+	new_attribute[0] = '\0';
+	strcat(new_attribute, attribute);
+	strcat(new_attribute, ": ");
+	char* start = strstr(header, new_attribute);
+
+	if (start == NULL)
+		return NULL;
+
+	char* end = strstr(start, "\r\n");
+
+	size_t content_len = end - start - strlen(new_attribute);
+	char* content = (char*) malloc(sizeof(char) * content_len);
+
+	if (content == NULL) {
+		printf("Malloc Failed.");
+		return NULL;
+	}
+
+	strncpy(content, start + strlen(new_attribute), content_len);
+	content[content_len] = '\0';
+
+	return content;
+}
 
 int main() {
 	// Disable output buffering
@@ -68,6 +96,7 @@ int main() {
 		return 1;
 	}
 
+	char* header = strchr(buffer, '\n') + 1;
 	char* request_line = strtok(buffer, "\r\n");
 
 	char* http_method = strtok(request_line, " ");
@@ -76,6 +105,7 @@ int main() {
 
 	printf("HTTP Method: %s \n", http_method);
 	printf("Path: %s \n", path);
+	printf("Header:\n%s\n", header);
 
 	char response[BUFFER_SIZE];
 
@@ -87,6 +117,23 @@ int main() {
 			// + 1 to skip '/'
 			char* msg = strchr(path + 1, '/') + 1;
 			snprintf(response, BUFFER_SIZE, "%sContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", RESPONSE_OK, strlen(msg), msg);
+		}
+		else {
+			snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTALLOWED);
+		}
+	}
+	else if (strcmp(path, "/user-agent") == 0) {
+		if (strcmp(http_method, "GET") == 0) {
+			char* agent = get_header_attribute(header, "User-Agent");
+			
+			if (agent != NULL) {
+				snprintf(response, BUFFER_SIZE, "%sContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", RESPONSE_OK, strlen(agent), agent);
+				free(agent);
+			}
+			else {
+				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_SERVERERROR);
+			}
+			
 		}
 		else {
 			snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTALLOWED);
