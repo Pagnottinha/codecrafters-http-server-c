@@ -15,11 +15,14 @@
 
 // remember to free!!!
 char* get_header_attribute(char* header, char* attribute);
-int connection(int client_fd);
+int connection(int client_fd, char* directory_path);
+char* get_directory(int argc, char** argv);
 
-int main() {
+
+int main(int argc, char **argv) {
 	// Disable output buffering
 	setbuf(stdout, NULL);
+	char* directory_path = get_directory(argc, argv);
 
 	int server_fd, client_fd, client_addr_len;
 	struct sockaddr_in client_addr;
@@ -66,7 +69,7 @@ int main() {
 		}
 		
 		if (fork() == 0) {
-			if(connection(client_fd) == 1) {
+			if(connection(client_fd, directory_path) == 1) {
 				printf("Connection error\n");
 				return 1;
 			}
@@ -81,7 +84,18 @@ int main() {
 	return 0;
 }
 
-int connection(int client_fd) {
+char* get_directory(int argc, char** argv) {
+	
+	for(int i = 1; i + 1 < argc; i++) {
+		if (strcmp(argv[i], "--directory") == 0) {
+			return argv[i + 1];
+		}
+	}
+
+	return NULL;
+}
+
+int connection(int client_fd, char* directory_path) {
 	char buffer[BUFFER_SIZE];
 
 	ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer));
@@ -134,6 +148,45 @@ int connection(int client_fd) {
 			snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTALLOWED);
 		}
 	}
+	else if (strncmp(path, "/files/", 6) == 0) {
+		if (strcmp(http_method, "GET") == 0) {
+			char* file_content = NULL;
+
+			if (directory_path != NULL) {
+				char* file_name = strchr(path + 1, '/') + 1;
+				size_t file_path_len = strlen(directory_path) + strlen(file_name) + 1;
+				char* file_path = (char*) malloc(file_path_len);
+				snprintf(file_path, file_path_len, "%s%s", directory_path, file_name);
+				printf("%s\n", file_path);
+
+				FILE* filep = fopen(file_path, "r");
+				if (filep != NULL) {
+					fseek(filep, 0L, SEEK_END);
+					long size = ftell(filep);
+					fseek(filep, 0L, SEEK_SET);
+					file_content = (char*) malloc(size + 1);
+					fread(file_content, size, 1, filep);
+					fclose(filep);
+				}
+
+				free(file_path);
+			}
+
+			if (directory_path != NULL && file_content != NULL) {
+				snprintf(response, BUFFER_SIZE, "%sContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n%s", RESPONSE_OK, strlen(file_content), file_content);
+			}
+			else if (directory_path != NULL && file_content == NULL) {
+				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTFOUND);
+			}
+			else {
+				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_SERVERERROR);
+			}
+
+		}
+		else {
+			snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTALLOWED);
+		}
+	}
 	else {
 		snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTFOUND);
 	}
@@ -161,7 +214,7 @@ char* get_header_attribute(char* header, char* attribute) {
 	char* end = strstr(start, "\r\n");
 
 	size_t content_len = end - start - strlen(new_attribute);
-	char* content = (char*) malloc(sizeof(char) * content_len);
+	char* content = (char*) malloc(content_len);
 
 	if (content == NULL) {
 		printf("Malloc Failed.");
