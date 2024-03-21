@@ -9,6 +9,7 @@
 
 #define BUFFER_SIZE 4096
 #define RESPONSE_OK "HTTP/1.1 200 OK\r\n"
+#define RESPONSE_CREATED "HTTP/1.1 201 Created\r\n"
 #define RESPONSE_NOTFOUND "HTTP/1.1 404 Not Found\r\n"
 #define RESPONSE_NOTALLOWED "HTTP/1.1 405 Method Not Allowed\r\n"
 #define RESPONSE_SERVERERROR "HTTP/1.1 500 Internal Server Error\r\n"
@@ -142,23 +143,32 @@ int connection(int client_fd, char* directory_path) {
 			else {
 				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_SERVERERROR);
 			}
-
 		}
 		else {
 			snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTALLOWED);
 		}
 	}
 	else if (strncmp(path, "/files/", 6) == 0) {
+		char* file_path = NULL;
+
+		if (directory_path != NULL) {
+			char* file_name = strchr(path + 1, '/') + 1;
+			size_t file_path_len = strlen(directory_path) + strlen(file_name) + 1;
+			file_path = (char*) malloc(file_path_len);
+
+			if (file_path == NULL) {
+				printf("file_path malloc failed.");
+			}
+			else {
+				snprintf(file_path, file_path_len, "%s%s", directory_path, file_name);
+				printf("%s\n", file_path);
+			}
+		}
+
 		if (strcmp(http_method, "GET") == 0) {
 			char* file_content = NULL;
 
-			if (directory_path != NULL) {
-				char* file_name = strchr(path + 1, '/') + 1;
-				size_t file_path_len = strlen(directory_path) + strlen(file_name) + 1;
-				char* file_path = (char*) malloc(file_path_len);
-				snprintf(file_path, file_path_len, "%s%s", directory_path, file_name);
-				printf("%s\n", file_path);
-
+			if (file_path != NULL) {
 				FILE* filep = fopen(file_path, "r");
 				if (filep != NULL) {
 					fseek(filep, 0L, SEEK_END);
@@ -172,16 +182,39 @@ int connection(int client_fd, char* directory_path) {
 				free(file_path);
 			}
 
-			if (directory_path != NULL && file_content != NULL) {
+			if (file_content != NULL) {
 				snprintf(response, BUFFER_SIZE, "%sContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n%s", RESPONSE_OK, strlen(file_content), file_content);
 			}
-			else if (directory_path != NULL && file_content == NULL) {
+			else if (file_content == NULL) {
 				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTFOUND);
 			}
 			else {
 				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_SERVERERROR);
 			}
 
+		} else if (strcmp(http_method, "POST") == 0) {
+			int flag = -1;
+
+			if (file_path != NULL) {
+				char* content = strrchr(header, '\n') + 1;
+
+				FILE* filep = fopen(file_path, "w");
+
+				if (filep != NULL) {
+					fprintf(filep, "%s", content);
+					flag = 0;
+					fclose(filep);
+				}
+
+				free(file_path);
+			}
+			
+			if (flag != -1) {
+				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_CREATED);
+			}
+			else {
+				snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_SERVERERROR);
+			}
 		}
 		else {
 			snprintf(response, BUFFER_SIZE, "%s\r\n", RESPONSE_NOTALLOWED);
